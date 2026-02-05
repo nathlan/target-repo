@@ -5,6 +5,7 @@
 *.tfstate.*
 *.tfvars
 *.tfvars.json
+!terraform.tfvars  # Allow terraform.tfvars for this test configuration
 crash.log
 crash.*.log
 override.tf
