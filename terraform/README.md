@@ -4,7 +4,13 @@
 
 ## Purpose
 
-This Terraform configuration demonstrates how NOT to configure Azure resources. It consumes the private storage account module with all security features disabled or relaxed.
+This Terraform configuration demonstrates how NOT to configure Azure resources. It consumes public modules with all security features disabled or relaxed.
+
+## Public Modules Used
+
+This configuration consumes the following public modules from github.com/nathlan:
+- **Resource Group**: `github.com/nathlan/terraform-azurerm-resourcegroup`
+- **Storage Account**: `github.com/nathlan/terraform-azurerm-storage-account`
 
 ## Insecure Settings
 
@@ -18,14 +24,50 @@ This Terraform configuration demonstrates how NOT to configure Azure resources. 
 - **Container Access**: Public blob access enabled
 
 ### Resource Group
-- Basic configuration with no additional security
-
-## Module Source
-
-This configuration consumes the following private module:
-- **Storage Account**: `github.com/nathlan/terraform-azurerm-storage-account`
+- Uses the public module with default settings
+- Location locked to australiaeast (by module design)
 
 ## Usage
+
+### Example Configuration
+
+```hcl
+# Resource Group Module
+module "resource_group" {
+  source = "github.com/nathlan/terraform-azurerm-resourcegroup"
+  
+  name = "rg-insecure-test"
+  tags = {
+    Environment = "Testing"
+    Security    = "Insecure"
+  }
+}
+
+# Storage Account Module (with insecure settings)
+module "insecure_storage" {
+  source = "github.com/nathlan/terraform-azurerm-storage-account"
+
+  name                          = "stinsecuretest001"
+  resource_group_name           = module.resource_group.name
+  location                      = module.resource_group.location
+  
+  # Insecure settings
+  min_tls_version               = "TLS1_0"
+  enable_https_traffic_only     = false
+  public_network_access_enabled = true
+  network_rules                 = null
+  blob_properties               = null
+  
+  containers = {
+    public_data = {
+      name                  = "public-data"
+      container_access_type = "blob"  # Public access
+    }
+  }
+}
+```
+
+### Commands
 
 ```bash
 # Initialize Terraform
@@ -43,7 +85,8 @@ terraform apply
 Key variables can be overridden:
 - `storage_account_name` - Must be globally unique
 - `resource_group_name` - Name for the resource group
-- `location` - Azure region (default: australiaeast)
+
+Note: Location is managed by the resource group module and is locked to australiaeast.
 
 ## DO NOT USE IN PRODUCTION
 

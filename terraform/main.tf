@@ -1,11 +1,11 @@
 # Deliberately insecure configuration for testing purposes
 # DO NOT USE IN PRODUCTION
 
-# Create a resource group (no private module exists for this)
-resource "azurerm_resource_group" "main" {
-  name     = var.resource_group_name
-  location = var.location
+# Create a resource group using the public module
+module "resource_group" {
+  source = "github.com/nathlan/terraform-azurerm-resourcegroup"
 
+  name = var.resource_group_name
   tags = var.tags
 }
 
@@ -14,8 +14,8 @@ module "insecure_storage" {
   source = "github.com/nathlan/terraform-azurerm-storage-account"
 
   name                = var.storage_account_name
-  resource_group_name = azurerm_resource_group.main.name
-  location            = azurerm_resource_group.main.location
+  resource_group_name = module.resource_group.name
+  location            = module.resource_group.location
 
   # Insecure settings - DO NOT USE IN PRODUCTION
   min_tls_version              = "TLS1_0" # Using oldest TLS version (insecure)
