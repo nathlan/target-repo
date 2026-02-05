@@ -1,4 +1,3 @@
-
 ---
 name: Sync /sync folder
 description: Sync /sync from nathlan/source-repo@main into this repository.
