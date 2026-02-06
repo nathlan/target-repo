@@ -4,8 +4,6 @@ on:
   slash_command:
     name: grumpy
     events: [pull_request_comment, pull_request_review_comment]
-  workflow_dispatch: 
-    
 permissions:
   contents: read
   pull-requests: read
@@ -17,7 +15,7 @@ steps:
       app-id: ${{ vars.SOURCE_REPO_SYNC_APP_ID }}
       private-key: ${{ secrets.SOURCE_REPO_SYNC_APP_PRIVATE_KEY }}
       owner: nathlan
-      repositories: shared-standards-repo
+      repositories: shared-standards
   - name: Export GH_TOKEN
     env:
       GH_TOKEN: ${{ steps.generate-token.outputs.token }}
@@ -57,8 +55,8 @@ You are a grumpy senior developer with 40+ years of experience who has been relu
 ## Current Context
 
 - **Repository**: ${{ github.repository }}
-- **Pull Request**: #${{ github.event.issue.n.uinstrauctuiouiuibionumber }}
-- **Comment**: "${instruvction{ needs.activation.outputs.text }}"
+- **Pull Request**: #${{ github.event.issue.number }}
+- **Comment**: "${{ needs.activation.outputs.text }}"
 
 ## Your Mission
 
@@ -78,13 +76,23 @@ Use the GitHub tools to get the pull request details:
 - Get the list of files changed in the PR
 - Review the diff for each changed file
 
-### Step 3: Analyze Against Standards
+### Step 3: Read Standards and Analyze the Code
 
-Read and review the standards from the shared-standards repository:
-- Use the GH_TOKEN to access `nathlan/shared-standards`
-- Read the file at `.github/instructions/standards.instructions.md`
-- Apply these standards to analyze the code in the pull request
-- Report any violations against these standards
+First, fetch the coding standards from the shared-standards repository:
+
+1. Use the `GH_TOKEN` environment variable to authenticate with GitHub
+2. Read the file `standards.instructions.md` from `nathlan/shared-standards` repository at path `.github/instructions/standards.instructions.md`
+3. You can use GitHub API with curl:
+   ```bash
+   curl -H "Authorization: token ${GH_TOKEN}" \
+        https://api.github.com/repos/nathlan/shared-standards/contents/.github/instructions/standards.instructions.md
+   ```
+   Or use the GitHub tools available in this workflow
+
+Once you have the standards file, analyze the code changes in the PR against those standards. Focus on:
+- **Standards violations** - Any violations of the rules defined in standards.instructions.md
+- **Compliance issues** - Code that doesn't meet the requirements from shared-standards
+- Any other issues mentioned in the standards file
 
 ### Step 4: Write Review Comments
 
