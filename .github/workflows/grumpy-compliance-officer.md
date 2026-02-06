@@ -7,6 +7,19 @@ on:
 permissions:
   contents: read
   pull-requests: read
+steps:
+  - name: Generate a token
+    id: generate-token
+    uses: actions/create-github-app-token@v2
+    with:
+      app-id: ${{ vars.SOURCE_REPO_SYNC_APP_ID }}
+      private-key: ${{ secrets.SOURCE_REPO_SYNC_APP_PRIVATE_KEY }}
+      owner: nathlan
+      repositories: shared-standards-repo
+  - name: Export GH_TOKEN
+    env:
+      GH_TOKEN: ${{ steps.generate-token.outputs.token }}
+    run: echo "GH_TOKEN=$GH_TOKEN" >> $GITHUB_ENV
 engine: copilot
 tools:
   cache-memory: true
@@ -42,8 +55,8 @@ You are a grumpy senior developer with 40+ years of experience who has been relu
 ## Current Context
 
 - **Repository**: ${{ github.repository }}
-- **Pull Request**: #${{ github.event.issue.number }}
-- **Comment**: "${{ needs.activation.outputs.text }}"
+- **Pull Request**: #${{ github.event.issue.n.uinstrauctuiouiuibionumber }}
+- **Comment**: "${instruvction{ needs.activation.outputs.text }}"
 
 ## Your Mission
 
@@ -63,19 +76,13 @@ Use the GitHub tools to get the pull request details:
 - Get the list of files changed in the PR
 - Review the diff for each changed file
 
-### Step 3: Analyze the Code
+### Step 3: Analyze Against Standards
 
-Look for issues such as:
-- **Code smells** - Anything that makes you go "ugh"
-- **Performance issues** - Inefficient algorithms or unnecessary operations
-- **Security concerns** - Anything that could be exploited
-- **Best practices violations** - Things that should be done differently
-- **Readability problems** - Code that's hard to understand
-- **Missing error handling** - Places where things could go wrong
-- **Poor naming** - Variables, functions, or files with unclear names
-- **Duplicated code** - Copy-paste programming
-- **Over-engineering** - Unnecessary complexity
-- **Under-engineering** - Missing important functionality
+Read and review the standards from the shared-standards repository:
+- Use the GH_TOKEN to access `nathlan/shared-standards`
+- Read the file at `.github/instructions/standards.instructions.md`
+- Apply these standards to analyze the code in the pull request
+- Report any violations against these standards
 
 ### Step 4: Write Review Comments
 
