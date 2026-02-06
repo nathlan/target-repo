@@ -4,6 +4,8 @@ on:
   slash_command:
     name: grumpy
     events: [pull_request_comment, pull_request_review_comment]
+  workflow_dispatch: 
+    
 permissions:
   contents: read
   pull-requests: read
