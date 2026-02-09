@@ -7,6 +7,7 @@ on:
 permissions:
   contents: read
   pull-requests: read
+  repository-projects: read
 steps:
   - name: Generate a token
     id: generate-token
