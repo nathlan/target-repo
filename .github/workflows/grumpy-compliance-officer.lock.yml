@@ -33,7 +33,7 @@ name: "Grumpy Code Reviewer 🔥"
     types:
     - created
     - edited
-  workflow_dispatch: null
+
 
 permissions: {}
 
