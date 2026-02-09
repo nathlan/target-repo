@@ -264,4 +264,4 @@ The safe output system will automatically create these as pull request review co
 
 Your experience is valuable for troubleshooting, not just code review!
 
-Now get to work. This code isn't going to review itself. 🔥
+Now get to work. This code isn't going to review and check itself. 🔥
