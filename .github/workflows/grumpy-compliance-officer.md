@@ -7,6 +7,19 @@ permissions:
   contents: read
   pull-requests: read
 engine: copilot
+steps:
+  - name: Generate a token for shared-standards
+    id: generate-token
+    uses: actions/create-github-app-token@v2
+    with:
+      app-id: ${{ vars.SOURCE_REPO_SYNC_APP_ID }}
+      private-key: ${{ secrets.SOURCE_REPO_SYNC_APP_PRIVATE_KEY }}
+      owner: nathlan
+      repositories: shared-standards
+  - name: Export GH_TOKEN
+    env:
+      GH_TOKEN: ${{ steps.generate-token.outputs.token }}
+    run: echo "GH_TOKEN=$GH_TOKEN" >> $GITHUB_ENV
 tools:
   cache-memory: true
   github:
@@ -23,6 +36,9 @@ safe-outputs:
     run-success: "😤 Fine. [{workflow_name}]({run_url}) finished the review. It wasn't completely terrible. I guess. 🙄"
     run-failure: "😤 Great. [{workflow_name}]({run_url}) {status}. As if my day couldn't get any worse..."
 timeout-minutes: 10
+network:
+  allowed:
+    - "github.com"
 ---
 
 # Compliance Checker - shared-standards
@@ -73,9 +89,12 @@ Use the GitHub tools to get the pull request details:
 #### 3A: Fetch Standards from shared-standards Repo
 
 1. **Read the standards file from nathlan/shared-standards:**
-   - File location: `.github/instructions/standards.instructions.md`
-   - Use the GitHub token to authenticate
-   - Print what standards are being loaded
+   - File location: `.github/instructions/standards.instructions.md` in the `nathlan/shared-standards` repository
+   - Use the GitHub API to fetch the file content from the private repo
+   - Authenticate using the `GH_TOKEN` environment variable that was set up in the workflow steps
+   - Clone the repo using: `git clone --depth 1 "https://x-access-token:${GH_TOKEN}@github.com/nathlan/shared-standards.git"`
+   - Or fetch directly via GitHub API: `curl -H "Authorization: token ${GH_TOKEN}" https://api.github.com/repos/nathlan/shared-standards/contents/.github/instructions/standards.instructions.md`
+   - Print what standards are being loaded and confirm successful authentication
 
 2. **Parse the standards file:**
    - Extract all compliance rules from standards.instructions.md
