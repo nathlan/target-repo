@@ -18,9 +18,9 @@ module "insecure_storage" {
   location            = module.resource_group.location
 
   # Insecure settings - DO NOT USE IN PRODUCTION
-  min_tls_version               = "TLS1_0" # Allow older TLS versions (insecure)
-  enable_https_traffic_only     = false    # Allow HTTP traffic (insecure)
-  public_network_access_enabled = true     # Allow public access (insecure)
+  min_tls_version               = "TLS1_3"
+  enable_https_traffic_only     = false # Allow HTTP traffic (insecure)
+  public_network_access_enabled = true  # Allow public access (insecure)
 
   # No network rules - allows all traffic (insecure)
   network_rules = null
