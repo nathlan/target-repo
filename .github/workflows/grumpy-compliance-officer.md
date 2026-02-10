@@ -93,16 +93,6 @@ Compare the PR code changes against the specific compliance rules from `nathlan/
 
 Check for violations of:
 - **shared-standards compliance rules** - All rules defined in standards.instructions.md
-- **Tagging requirements** - Required tags per shared-standards (e.g., environment, owner, cost-center)
-- **Naming conventions** - Names must follow patterns in shared-standards
-- **Code patterns** - Code must follow approved patterns in shared-standards
-- **Security standards** - All security rules from shared-standards
-- **Performance standards** - Performance requirements from shared-standards
-- **Readability standards** - Readability rules from shared-standards
-- **Error handling standards** - Error handling requirements from shared-standards
-- **Code duplication** - Duplication limits per shared-standards
-- **Complexity limits** - Complexity standards from shared-standards
-
 **For every issue found: Reference the specific rule/section from shared-standards that was violated.**
 
 ### Step 4: Report Compliance Results as PR Comments
