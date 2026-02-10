@@ -19,47 +19,32 @@
 #   gh aw compile
 # For more information: https://github.com/github/gh-aw/blob/main/.github/aw/github-agentic-workflows.md
 #
-# Compliance checker that validates code against standards from nathlan/shared-standards repository
+# Sync Copilot files and GitHub Actions workflows from nathlan/shared-standards into this repository
 #
-# frontmatter-hash: 73eb6ea7f966d87c30f4033a7bd2ff65ce95699183804ea278cb54bc7a3adab2
+# frontmatter-hash: 93899269770e8ad24222a79a7e15efb10b2f350f5415a11301d5cbe5dabc4f81
 
-name: "Compliance Checker - shared-standards"
+name: "Sync shared-standards Files"
 "on":
-  issue_comment:
-    types:
-    - created
-    - edited
-  pull_request_review_comment:
-    types:
-    - created
-    - edited
+  schedule:
+  - cron: "55 18 * * *"
+    # Friendly format: daily (scattered)
+  workflow_dispatch:
 
 permissions: {}
 
 concurrency:
-  group: "gh-aw-${{ github.workflow }}-${{ github.event.issue.number || github.event.pull_request.number }}"
+  group: "gh-aw-${{ github.workflow }}"
 
-run-name: "Compliance Checker - shared-standards"
+run-name: "Sync shared-standards Files"
 
 jobs:
   activation:
-    needs: pre_activation
-    if: >
-      (needs.pre_activation.outputs.activated == 'true') && ((github.event_name == 'issue_comment') && ((contains(github.event.comment.body, '/grumpy')) &&
-      (github.event.issue.pull_request != null)) || (github.event_name == 'pull_request_review_comment') &&
-      (contains(github.event.comment.body, '/grumpy')))
     runs-on: ubuntu-slim
     permissions:
       contents: read
-      discussions: write
-      issues: write
-      pull-requests: write
     outputs:
-      comment_id: ${{ steps.add-comment.outputs.comment-id }}
-      comment_repo: ${{ steps.add-comment.outputs.comment-repo }}
-      comment_url: ${{ steps.add-comment.outputs.comment-url }}
-      slash_command: ${{ needs.pre_activation.outputs.matched_command }}
-      text: ${{ steps.compute-text.outputs.text }}
+      comment_id: ""
+      comment_repo: ""
     steps:
       - name: Setup Scripts
         uses: github/gh-aw/actions/setup@76d37d925abd44fee97379206f105b74b91a285b # v0.40.0
@@ -68,42 +53,20 @@ jobs:
       - name: Check workflow file timestamps
         uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8.0.0
         env:
-          GH_AW_WORKFLOW_FILE: "grumpy-compliance-officer.lock.yml"
+          GH_AW_WORKFLOW_FILE: "sync-shared-standards.lock.yml"
         with:
           script: |
             const { setupGlobals } = require('/opt/gh-aw/actions/setup_globals.cjs');
             setupGlobals(core, github, context, exec, io);
             const { main } = require('/opt/gh-aw/actions/check_workflow_timestamp_api.cjs');
             await main();
-      - name: Compute current body text
-        id: compute-text
-        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8.0.0
-        with:
-          script: |
-            const { setupGlobals } = require('/opt/gh-aw/actions/setup_globals.cjs');
-            setupGlobals(core, github, context, exec, io);
-            const { main } = require('/opt/gh-aw/actions/compute_text.cjs');
-            await main();
-      - name: Add comment with workflow run link
-        id: add-comment
-        if: github.event_name == 'issues' || github.event_name == 'issue_comment' || github.event_name == 'pull_request_review_comment' || github.event_name == 'discussion' || github.event_name == 'discussion_comment' || (github.event_name == 'pull_request') && (github.event.pull_request.head.repo.id == github.repository_id)
-        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8.0.0
-        env:
-          GH_AW_WORKFLOW_NAME: "Compliance Checker - shared-standards"
-          GH_AW_SAFE_OUTPUT_MESSAGES: "{\"footer\":\"\\u003e 😤 *Reluctantly reviewed by [{workflow_name}]({run_url})*\",\"runStarted\":\"😤 *sigh* [{workflow_name}]({run_url}) is begrudgingly looking at this {event_type}... This better be worth my time.\",\"runSuccess\":\"😤 Fine. [{workflow_name}]({run_url}) finished the review. It wasn't completely terrible. I guess. 🙄\",\"runFailure\":\"😤 Great. [{workflow_name}]({run_url}) {status}. As if my day couldn't get any worse...\"}"
-        with:
-          script: |
-            const { setupGlobals } = require('/opt/gh-aw/actions/setup_globals.cjs');
-            setupGlobals(core, github, context, exec, io);
-            const { main } = require('/opt/gh-aw/actions/add_workflow_run_comment.cjs');
-            await main();
 
   agent:
     needs: activation
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      pull-requests: read
+    permissions: read-all
+    concurrency:
+      group: "gh-aw-copilot-${{ github.workflow }}"
     env:
       DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
       GH_AW_ASSETS_ALLOWED_EXTS: ""
@@ -130,17 +93,19 @@ jobs:
           persist-credentials: false
       - name: Create gh-aw temp directory
         run: bash /opt/gh-aw/actions/create_gh_aw_tmp_dir.sh
-      # Cache memory file share configuration from frontmatter processed below
-      - name: Create cache-memory directory
-        run: bash /opt/gh-aw/actions/create_cache_memory_dir.sh
-      - name: Restore cache-memory file share data
-        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+      - id: generate-token
+        name: Generate a token
+        uses: actions/create-github-app-token@29824e69f54612133e76f7eaac726eef6c875baf # v2
         with:
-          key: memory-${{ github.workflow }}-${{ github.run_id }}
-          path: /tmp/gh-aw/cache-memory
-          restore-keys: |
-            memory-${{ github.workflow }}-
-            memory-
+          app-id: ${{ vars.SOURCE_REPO_SYNC_APP_ID }}
+          owner: nathlan
+          private-key: ${{ secrets.SOURCE_REPO_SYNC_APP_PRIVATE_KEY }}
+          repositories: shared-standards
+      - env:
+          GH_TOKEN: ${{ steps.generate-token.outputs.token }}
+        name: Export GH_TOKEN
+        run: echo "GH_TOKEN=$GH_TOKEN" >> $GITHUB_ENV
+
       - name: Configure Git credentials
         env:
           REPO_NAME: ${{ github.repository }}
@@ -192,75 +157,42 @@ jobs:
           mkdir -p /tmp/gh-aw/safeoutputs
           mkdir -p /tmp/gh-aw/mcp-logs/safeoutputs
           cat > /opt/gh-aw/safeoutputs/config.json << 'EOF'
-          {"add_comment":{"max":1},"create_pull_request_review_comment":{"max":5},"missing_data":{},"missing_tool":{},"noop":{"max":1}}
+          {"create_pull_request":{},"missing_data":{},"missing_tool":{},"noop":{"max":1}}
           EOF
           cat > /opt/gh-aw/safeoutputs/tools.json << 'EOF'
           [
             {
-              "description": "Add a comment to an existing GitHub issue, pull request, or discussion. Use this to provide feedback, answer questions, or add information to an existing conversation. For creating new items, use create_issue, create_discussion, or create_pull_request instead. CONSTRAINTS: Maximum 1 comment(s) can be added.",
+              "description": "Create a new GitHub pull request to propose code changes. Use this after making file edits to submit them for review and merging. The PR will be created from the current branch with your committed changes. For code review comments on an existing PR, use create_pull_request_review_comment instead. CONSTRAINTS: Maximum 1 pull request(s) can be created. Title will be prefixed with \"[shared-standards-sync] \". Labels [standards automation] will be automatically added.",
               "inputSchema": {
                 "additionalProperties": false,
                 "properties": {
                   "body": {
-                    "description": "The comment text in Markdown format. This is the 'body' field - do not use 'comment_body' or other variations. Provide helpful, relevant information that adds value to the conversation.",
+                    "description": "Detailed PR description in Markdown. Include what changes were made, why, testing notes, and any breaking changes. Do NOT repeat the title as a heading.",
                     "type": "string"
                   },
-                  "item_number": {
-                    "description": "The issue, pull request, or discussion number to comment on. This is the numeric ID from the GitHub URL (e.g., 123 in github.com/owner/repo/issues/123). If omitted, the tool will attempt to resolve the target from the current workflow context (triggering issue, PR, or discussion).",
-                    "type": "number"
+                  "branch": {
+                    "description": "Source branch name containing the changes. If omitted, uses the current working branch.",
+                    "type": "string"
+                  },
+                  "labels": {
+                    "description": "Labels to categorize the PR (e.g., 'enhancement', 'bugfix'). Labels must exist in the repository.",
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  "title": {
+                    "description": "Concise PR title describing the changes. Follow repository conventions (e.g., conventional commits). The title appears as the main heading.",
+                    "type": "string"
                   }
                 },
                 "required": [
+                  "title",
                   "body"
                 ],
                 "type": "object"
               },
-              "name": "add_comment"
-            },
-            {
-              "description": "Create a review comment on a specific line of code in a pull request. Use this for inline code review feedback, suggestions, or questions about specific code changes. For general PR comments not tied to specific lines, use add_comment instead. CONSTRAINTS: Maximum 5 review comment(s) can be created. Comments will be on the RIGHT side of the diff.",
-              "inputSchema": {
-                "additionalProperties": false,
-                "properties": {
-                  "body": {
-                    "description": "Review comment content in Markdown. Provide specific, actionable feedback about the code at this location.",
-                    "type": "string"
-                  },
-                  "line": {
-                    "description": "Line number for the comment. For single-line comments, this is the target line. For multi-line comments, this is the ending line.",
-                    "type": [
-                      "number",
-                      "string"
-                    ]
-                  },
-                  "path": {
-                    "description": "File path relative to the repository root (e.g., 'src/auth/login.js'). Must be a file that was changed in the PR.",
-                    "type": "string"
-                  },
-                  "side": {
-                    "description": "Side of the diff to comment on: RIGHT for the new version (additions), LEFT for the old version (deletions). Defaults to RIGHT.",
-                    "enum": [
-                      "LEFT",
-                      "RIGHT"
-                    ],
-                    "type": "string"
-                  },
-                  "start_line": {
-                    "description": "Starting line number for multi-line comments. When set, the comment spans from start_line to line. Omit for single-line comments.",
-                    "type": [
-                      "number",
-                      "string"
-                    ]
-                  }
-                },
-                "required": [
-                  "path",
-                  "line",
-                  "body"
-                ],
-                "type": "object"
-              },
-              "name": "create_pull_request_review_comment"
+              "name": "create_pull_request"
             },
             {
               "description": "Report that a tool or capability needed to complete the task is not available, or share any information you deem important about missing functionality or limitations. Use this when you cannot accomplish what was requested because the required functionality is missing or access is restricted.",
@@ -335,7 +267,7 @@ jobs:
           EOF
           cat > /opt/gh-aw/safeoutputs/validation.json << 'EOF'
           {
-            "add_comment": {
+            "create_pull_request": {
               "defaultMax": 1,
               "fields": {
                 "body": {
@@ -344,40 +276,25 @@ jobs:
                   "sanitize": true,
                   "maxLength": 65000
                 },
-                "item_number": {
-                  "issueOrPRNumber": true
+                "branch": {
+                  "required": true,
+                  "type": "string",
+                  "sanitize": true,
+                  "maxLength": 256
+                },
+                "labels": {
+                  "type": "array",
+                  "itemType": "string",
+                  "itemSanitize": true,
+                  "itemMaxLength": 128
+                },
+                "title": {
+                  "required": true,
+                  "type": "string",
+                  "sanitize": true,
+                  "maxLength": 128
                 }
               }
-            },
-            "create_pull_request_review_comment": {
-              "defaultMax": 1,
-              "fields": {
-                "body": {
-                  "required": true,
-                  "type": "string",
-                  "sanitize": true,
-                  "maxLength": 65000
-                },
-                "line": {
-                  "required": true,
-                  "positiveInteger": true
-                },
-                "path": {
-                  "required": true,
-                  "type": "string"
-                },
-                "side": {
-                  "type": "string",
-                  "enum": [
-                    "LEFT",
-                    "RIGHT"
-                  ]
-                },
-                "start_line": {
-                  "optionalPositiveInteger": true
-                }
-              },
-              "customValidation": "startLineLessOrEqualLine"
             },
             "missing_tool": {
               "defaultMax": 20,
@@ -485,7 +402,7 @@ jobs:
                   "GITHUB_LOCKDOWN_MODE": "$GITHUB_MCP_LOCKDOWN",
                   "GITHUB_PERSONAL_ACCESS_TOKEN": "\${GITHUB_MCP_SERVER_TOKEN}",
                   "GITHUB_READ_ONLY": "1",
-                  "GITHUB_TOOLSETS": "pull_requests,repos"
+                  "GITHUB_TOOLSETS": "context,repos,issues,pull_requests"
                 }
               },
               "safeoutputs": {
@@ -517,7 +434,7 @@ jobs:
               version: "",
               agent_version: "0.0.400",
               cli_version: "v0.40.0",
-              workflow_name: "Compliance Checker - shared-standards",
+              workflow_name: "Sync shared-standards Files",
               experimental: false,
               supports_tools_allowlist: true,
               supports_http_transport: true,
@@ -530,7 +447,7 @@ jobs:
               actor: context.actor,
               event_name: context.eventName,
               staged: false,
-              allowed_domains: ["defaults"],
+              allowed_domains: ["github.com"],
               firewall_enabled: true,
               awf_version: "v0.13.1",
               awmg_version: "v0.0.94",
@@ -566,7 +483,6 @@ jobs:
           GH_AW_GITHUB_REPOSITORY: ${{ github.repository }}
           GH_AW_GITHUB_RUN_ID: ${{ github.run_id }}
           GH_AW_GITHUB_WORKSPACE: ${{ github.workspace }}
-          GH_AW_IS_PR_COMMENT: ${{ github.event.issue.pull_request && 'true' || '' }}
         run: |
           bash /opt/gh-aw/actions/create_prompt_first.sh
           cat << 'PROMPT_EOF' > "$GH_AW_PROMPT"
@@ -574,7 +490,6 @@ jobs:
           PROMPT_EOF
           cat "/opt/gh-aw/prompts/temp_folder_prompt.md" >> "$GH_AW_PROMPT"
           cat "/opt/gh-aw/prompts/markdown.md" >> "$GH_AW_PROMPT"
-          cat "/opt/gh-aw/prompts/cache_memory_prompt.md" >> "$GH_AW_PROMPT"
           cat << 'PROMPT_EOF' >> "$GH_AW_PROMPT"
           <safe-outputs>
           <description>GitHub API Access Instructions</description>
@@ -620,21 +535,16 @@ jobs:
           </github-context>
           
           PROMPT_EOF
-          if [ "$GITHUB_EVENT_NAME" = "issue_comment" ] && [ -n "$GH_AW_IS_PR_COMMENT" ] || [ "$GITHUB_EVENT_NAME" = "pull_request_review_comment" ] || [ "$GITHUB_EVENT_NAME" = "pull_request_review" ]; then
-            cat "/opt/gh-aw/prompts/pr_context_prompt.md" >> "$GH_AW_PROMPT"
-          fi
           cat << 'PROMPT_EOF' >> "$GH_AW_PROMPT"
           </system>
           PROMPT_EOF
           cat << 'PROMPT_EOF' >> "$GH_AW_PROMPT"
-          {{#runtime-import workflows/grumpy-compliance-officer.md}}
+          {{#runtime-import workflows/sync-shared-standards.md}}
           PROMPT_EOF
       - name: Substitute placeholders
         uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8.0.0
         env:
           GH_AW_PROMPT: /tmp/gh-aw/aw-prompts/prompt.txt
-          GH_AW_CACHE_DESCRIPTION: ${{ '' }}
-          GH_AW_CACHE_DIR: ${{ '/tmp/gh-aw/cache-memory/' }}
           GH_AW_GITHUB_ACTOR: ${{ github.actor }}
           GH_AW_GITHUB_EVENT_COMMENT_ID: ${{ github.event.comment.id }}
           GH_AW_GITHUB_EVENT_DISCUSSION_NUMBER: ${{ github.event.discussion.number }}
@@ -643,7 +553,6 @@ jobs:
           GH_AW_GITHUB_REPOSITORY: ${{ github.repository }}
           GH_AW_GITHUB_RUN_ID: ${{ github.run_id }}
           GH_AW_GITHUB_WORKSPACE: ${{ github.workspace }}
-          GH_AW_IS_PR_COMMENT: ${{ github.event.issue.pull_request && 'true' || '' }}
         with:
           script: |
             const substitutePlaceholders = require('/opt/gh-aw/actions/substitute_placeholders.cjs');
@@ -652,8 +561,6 @@ jobs:
             return await substitutePlaceholders({
               file: process.env.GH_AW_PROMPT,
               substitutions: {
-                GH_AW_CACHE_DESCRIPTION: process.env.GH_AW_CACHE_DESCRIPTION,
-                GH_AW_CACHE_DIR: process.env.GH_AW_CACHE_DIR,
                 GH_AW_GITHUB_ACTOR: process.env.GH_AW_GITHUB_ACTOR,
                 GH_AW_GITHUB_EVENT_COMMENT_ID: process.env.GH_AW_GITHUB_EVENT_COMMENT_ID,
                 GH_AW_GITHUB_EVENT_DISCUSSION_NUMBER: process.env.GH_AW_GITHUB_EVENT_DISCUSSION_NUMBER,
@@ -661,8 +568,7 @@ jobs:
                 GH_AW_GITHUB_EVENT_PULL_REQUEST_NUMBER: process.env.GH_AW_GITHUB_EVENT_PULL_REQUEST_NUMBER,
                 GH_AW_GITHUB_REPOSITORY: process.env.GH_AW_GITHUB_REPOSITORY,
                 GH_AW_GITHUB_RUN_ID: process.env.GH_AW_GITHUB_RUN_ID,
-                GH_AW_GITHUB_WORKSPACE: process.env.GH_AW_GITHUB_WORKSPACE,
-                GH_AW_IS_PR_COMMENT: process.env.GH_AW_IS_PR_COMMENT
+                GH_AW_GITHUB_WORKSPACE: process.env.GH_AW_GITHUB_WORKSPACE
               }
             });
       - name: Interpolate variables and render templates
@@ -686,13 +592,13 @@ jobs:
       - name: Execute GitHub Copilot CLI
         id: agentic_execution
         # Copilot CLI tool arguments (sorted):
-        timeout-minutes: 10
+        timeout-minutes: 20
         run: |
           set -o pipefail
           GH_AW_TOOL_BINS=""; command -v go >/dev/null 2>&1 && GH_AW_TOOL_BINS="$(go env GOROOT)/bin:$GH_AW_TOOL_BINS"; [ -n "$JAVA_HOME" ] && GH_AW_TOOL_BINS="$JAVA_HOME/bin:$GH_AW_TOOL_BINS"; [ -n "$CARGO_HOME" ] && GH_AW_TOOL_BINS="$CARGO_HOME/bin:$GH_AW_TOOL_BINS"; [ -n "$GEM_HOME" ] && GH_AW_TOOL_BINS="$GEM_HOME/bin:$GH_AW_TOOL_BINS"; [ -n "$CONDA" ] && GH_AW_TOOL_BINS="$CONDA/bin:$GH_AW_TOOL_BINS"; [ -n "$PIPX_BIN_DIR" ] && GH_AW_TOOL_BINS="$PIPX_BIN_DIR:$GH_AW_TOOL_BINS"; [ -n "$SWIFT_PATH" ] && GH_AW_TOOL_BINS="$SWIFT_PATH:$GH_AW_TOOL_BINS"; [ -n "$DOTNET_ROOT" ] && GH_AW_TOOL_BINS="$DOTNET_ROOT:$GH_AW_TOOL_BINS"; export GH_AW_TOOL_BINS
           mkdir -p "$HOME/.cache"
-          sudo -E awf --env-all --env "ANDROID_HOME=${ANDROID_HOME}" --env "ANDROID_NDK=${ANDROID_NDK}" --env "ANDROID_NDK_HOME=${ANDROID_NDK_HOME}" --env "ANDROID_NDK_LATEST_HOME=${ANDROID_NDK_LATEST_HOME}" --env "ANDROID_NDK_ROOT=${ANDROID_NDK_ROOT}" --env "ANDROID_SDK_ROOT=${ANDROID_SDK_ROOT}" --env "AZURE_EXTENSION_DIR=${AZURE_EXTENSION_DIR}" --env "CARGO_HOME=${CARGO_HOME}" --env "CHROMEWEBDRIVER=${CHROMEWEBDRIVER}" --env "CONDA=${CONDA}" --env "DOTNET_ROOT=${DOTNET_ROOT}" --env "EDGEWEBDRIVER=${EDGEWEBDRIVER}" --env "GECKOWEBDRIVER=${GECKOWEBDRIVER}" --env "GEM_HOME=${GEM_HOME}" --env "GEM_PATH=${GEM_PATH}" --env "GOPATH=${GOPATH}" --env "GOROOT=${GOROOT}" --env "HOMEBREW_CELLAR=${HOMEBREW_CELLAR}" --env "HOMEBREW_PREFIX=${HOMEBREW_PREFIX}" --env "HOMEBREW_REPOSITORY=${HOMEBREW_REPOSITORY}" --env "JAVA_HOME=${JAVA_HOME}" --env "JAVA_HOME_11_X64=${JAVA_HOME_11_X64}" --env "JAVA_HOME_17_X64=${JAVA_HOME_17_X64}" --env "JAVA_HOME_21_X64=${JAVA_HOME_21_X64}" --env "JAVA_HOME_25_X64=${JAVA_HOME_25_X64}" --env "JAVA_HOME_8_X64=${JAVA_HOME_8_X64}" --env "NVM_DIR=${NVM_DIR}" --env "PIPX_BIN_DIR=${PIPX_BIN_DIR}" --env "PIPX_HOME=${PIPX_HOME}" --env "RUSTUP_HOME=${RUSTUP_HOME}" --env "SELENIUM_JAR_PATH=${SELENIUM_JAR_PATH}" --env "SWIFT_PATH=${SWIFT_PATH}" --env "VCPKG_INSTALLATION_ROOT=${VCPKG_INSTALLATION_ROOT}" --env "GH_AW_TOOL_BINS=$GH_AW_TOOL_BINS" --container-workdir "${GITHUB_WORKSPACE}" --mount /tmp:/tmp:rw --mount "${HOME}/.cache:${HOME}/.cache:rw" --mount "${GITHUB_WORKSPACE}:${GITHUB_WORKSPACE}:rw" --mount /usr/bin/cat:/usr/bin/cat:ro --mount /usr/bin/curl:/usr/bin/curl:ro --mount /usr/bin/date:/usr/bin/date:ro --mount /usr/bin/find:/usr/bin/find:ro --mount /usr/bin/gh:/usr/bin/gh:ro --mount /usr/bin/grep:/usr/bin/grep:ro --mount /usr/bin/jq:/usr/bin/jq:ro --mount /usr/bin/yq:/usr/bin/yq:ro --mount /usr/bin/cp:/usr/bin/cp:ro --mount /usr/bin/cut:/usr/bin/cut:ro --mount /usr/bin/diff:/usr/bin/diff:ro --mount /usr/bin/head:/usr/bin/head:ro --mount /usr/bin/ls:/usr/bin/ls:ro --mount /usr/bin/mkdir:/usr/bin/mkdir:ro --mount /usr/bin/rm:/usr/bin/rm:ro --mount /usr/bin/sed:/usr/bin/sed:ro --mount /usr/bin/sort:/usr/bin/sort:ro --mount /usr/bin/tail:/usr/bin/tail:ro --mount /usr/bin/wc:/usr/bin/wc:ro --mount /usr/bin/which:/usr/bin/which:ro --mount /usr/local/bin/copilot:/usr/local/bin/copilot:ro --mount /home/runner/.copilot:/home/runner/.copilot:rw --mount /opt/hostedtoolcache:/opt/hostedtoolcache:ro --mount /opt/gh-aw:/opt/gh-aw:ro --allow-domains api.business.githubcopilot.com,api.enterprise.githubcopilot.com,api.github.com,api.githubcopilot.com,api.individual.githubcopilot.com,api.snapcraft.io,archive.ubuntu.com,azure.archive.ubuntu.com,crl.geotrust.com,crl.globalsign.com,crl.identrust.com,crl.sectigo.com,crl.thawte.com,crl.usertrust.com,crl.verisign.com,crl3.digicert.com,crl4.digicert.com,crls.ssl.com,github.com,host.docker.internal,json-schema.org,json.schemastore.org,keyserver.ubuntu.com,ocsp.digicert.com,ocsp.geotrust.com,ocsp.globalsign.com,ocsp.identrust.com,ocsp.sectigo.com,ocsp.ssl.com,ocsp.thawte.com,ocsp.usertrust.com,ocsp.verisign.com,packagecloud.io,packages.cloud.google.com,packages.microsoft.com,ppa.launchpad.net,raw.githubusercontent.com,registry.npmjs.org,s.symcb.com,s.symcd.com,security.ubuntu.com,ts-crl.ws.symantec.com,ts-ocsp.ws.symantec.com --log-level info --proxy-logs-dir /tmp/gh-aw/sandbox/firewall/logs --enable-host-access --image-tag 0.13.1 --agent-image act \
-            -- 'source /opt/gh-aw/actions/sanitize_path.sh "$GH_AW_TOOL_BINS$(find /opt/hostedtoolcache -maxdepth 4 -type d -name bin 2>/dev/null | tr '\''\n'\'' '\'':'\'')$PATH" && /usr/local/bin/copilot --add-dir /tmp/gh-aw/ --log-level all --log-dir /tmp/gh-aw/sandbox/agent/logs/ --add-dir "${GITHUB_WORKSPACE}" --disable-builtin-mcps --allow-all-tools --add-dir /tmp/gh-aw/cache-memory/ --allow-all-paths --share /tmp/gh-aw/sandbox/agent/logs/conversation.md --prompt "$(cat /tmp/gh-aw/aw-prompts/prompt.txt)"${GH_AW_MODEL_AGENT_COPILOT:+ --model "$GH_AW_MODEL_AGENT_COPILOT"}' \
+          sudo -E awf --env-all --env "ANDROID_HOME=${ANDROID_HOME}" --env "ANDROID_NDK=${ANDROID_NDK}" --env "ANDROID_NDK_HOME=${ANDROID_NDK_HOME}" --env "ANDROID_NDK_LATEST_HOME=${ANDROID_NDK_LATEST_HOME}" --env "ANDROID_NDK_ROOT=${ANDROID_NDK_ROOT}" --env "ANDROID_SDK_ROOT=${ANDROID_SDK_ROOT}" --env "AZURE_EXTENSION_DIR=${AZURE_EXTENSION_DIR}" --env "CARGO_HOME=${CARGO_HOME}" --env "CHROMEWEBDRIVER=${CHROMEWEBDRIVER}" --env "CONDA=${CONDA}" --env "DOTNET_ROOT=${DOTNET_ROOT}" --env "EDGEWEBDRIVER=${EDGEWEBDRIVER}" --env "GECKOWEBDRIVER=${GECKOWEBDRIVER}" --env "GEM_HOME=${GEM_HOME}" --env "GEM_PATH=${GEM_PATH}" --env "GOPATH=${GOPATH}" --env "GOROOT=${GOROOT}" --env "HOMEBREW_CELLAR=${HOMEBREW_CELLAR}" --env "HOMEBREW_PREFIX=${HOMEBREW_PREFIX}" --env "HOMEBREW_REPOSITORY=${HOMEBREW_REPOSITORY}" --env "JAVA_HOME=${JAVA_HOME}" --env "JAVA_HOME_11_X64=${JAVA_HOME_11_X64}" --env "JAVA_HOME_17_X64=${JAVA_HOME_17_X64}" --env "JAVA_HOME_21_X64=${JAVA_HOME_21_X64}" --env "JAVA_HOME_25_X64=${JAVA_HOME_25_X64}" --env "JAVA_HOME_8_X64=${JAVA_HOME_8_X64}" --env "NVM_DIR=${NVM_DIR}" --env "PIPX_BIN_DIR=${PIPX_BIN_DIR}" --env "PIPX_HOME=${PIPX_HOME}" --env "RUSTUP_HOME=${RUSTUP_HOME}" --env "SELENIUM_JAR_PATH=${SELENIUM_JAR_PATH}" --env "SWIFT_PATH=${SWIFT_PATH}" --env "VCPKG_INSTALLATION_ROOT=${VCPKG_INSTALLATION_ROOT}" --env "GH_AW_TOOL_BINS=$GH_AW_TOOL_BINS" --container-workdir "${GITHUB_WORKSPACE}" --mount /tmp:/tmp:rw --mount "${HOME}/.cache:${HOME}/.cache:rw" --mount "${GITHUB_WORKSPACE}:${GITHUB_WORKSPACE}:rw" --mount /usr/bin/cat:/usr/bin/cat:ro --mount /usr/bin/curl:/usr/bin/curl:ro --mount /usr/bin/date:/usr/bin/date:ro --mount /usr/bin/find:/usr/bin/find:ro --mount /usr/bin/gh:/usr/bin/gh:ro --mount /usr/bin/grep:/usr/bin/grep:ro --mount /usr/bin/jq:/usr/bin/jq:ro --mount /usr/bin/yq:/usr/bin/yq:ro --mount /usr/bin/cp:/usr/bin/cp:ro --mount /usr/bin/cut:/usr/bin/cut:ro --mount /usr/bin/diff:/usr/bin/diff:ro --mount /usr/bin/head:/usr/bin/head:ro --mount /usr/bin/ls:/usr/bin/ls:ro --mount /usr/bin/mkdir:/usr/bin/mkdir:ro --mount /usr/bin/rm:/usr/bin/rm:ro --mount /usr/bin/sed:/usr/bin/sed:ro --mount /usr/bin/sort:/usr/bin/sort:ro --mount /usr/bin/tail:/usr/bin/tail:ro --mount /usr/bin/wc:/usr/bin/wc:ro --mount /usr/bin/which:/usr/bin/which:ro --mount /usr/local/bin/copilot:/usr/local/bin/copilot:ro --mount /home/runner/.copilot:/home/runner/.copilot:rw --mount /opt/hostedtoolcache:/opt/hostedtoolcache:ro --mount /opt/gh-aw:/opt/gh-aw:ro --allow-domains api.business.githubcopilot.com,api.enterprise.githubcopilot.com,api.github.com,api.githubcopilot.com,api.individual.githubcopilot.com,github.com,host.docker.internal,raw.githubusercontent.com,registry.npmjs.org --log-level info --proxy-logs-dir /tmp/gh-aw/sandbox/firewall/logs --enable-host-access --image-tag 0.13.1 --agent-image act \
+            -- 'source /opt/gh-aw/actions/sanitize_path.sh "$GH_AW_TOOL_BINS$(find /opt/hostedtoolcache -maxdepth 4 -type d -name bin 2>/dev/null | tr '\''\n'\'' '\'':'\'')$PATH" && /usr/local/bin/copilot --add-dir /tmp/gh-aw/ --log-level all --log-dir /tmp/gh-aw/sandbox/agent/logs/ --add-dir "${GITHUB_WORKSPACE}" --disable-builtin-mcps --allow-all-tools --allow-all-paths --share /tmp/gh-aw/sandbox/agent/logs/conversation.md --prompt "$(cat /tmp/gh-aw/aw-prompts/prompt.txt)"${GH_AW_MODEL_AGENT_COPILOT:+ --model "$GH_AW_MODEL_AGENT_COPILOT"}' \
             2>&1 | tee /tmp/gh-aw/agent-stdio.log
         env:
           COPILOT_AGENT_RUNNER_TYPE: STANDALONE
@@ -742,11 +648,12 @@ jobs:
             const { main } = require('/opt/gh-aw/actions/redact_secrets.cjs');
             await main();
         env:
-          GH_AW_SECRET_NAMES: 'COPILOT_GITHUB_TOKEN,GH_AW_GITHUB_MCP_SERVER_TOKEN,GH_AW_GITHUB_TOKEN,GITHUB_TOKEN'
+          GH_AW_SECRET_NAMES: 'COPILOT_GITHUB_TOKEN,GH_AW_GITHUB_MCP_SERVER_TOKEN,GH_AW_GITHUB_TOKEN,GITHUB_TOKEN,SOURCE_REPO_SYNC_APP_PRIVATE_KEY'
           SECRET_COPILOT_GITHUB_TOKEN: ${{ secrets.COPILOT_GITHUB_TOKEN }}
           SECRET_GH_AW_GITHUB_MCP_SERVER_TOKEN: ${{ secrets.GH_AW_GITHUB_MCP_SERVER_TOKEN }}
           SECRET_GH_AW_GITHUB_TOKEN: ${{ secrets.GH_AW_GITHUB_TOKEN }}
           SECRET_GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SECRET_SOURCE_REPO_SYNC_APP_PRIVATE_KEY: ${{ secrets.SOURCE_REPO_SYNC_APP_PRIVATE_KEY }}
       - name: Upload Safe Outputs
         if: always()
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
@@ -759,10 +666,9 @@ jobs:
         uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8.0.0
         env:
           GH_AW_SAFE_OUTPUTS: ${{ env.GH_AW_SAFE_OUTPUTS }}
-          GH_AW_ALLOWED_DOMAINS: "api.business.githubcopilot.com,api.enterprise.githubcopilot.com,api.github.com,api.githubcopilot.com,api.individual.githubcopilot.com,api.snapcraft.io,archive.ubuntu.com,azure.archive.ubuntu.com,crl.geotrust.com,crl.globalsign.com,crl.identrust.com,crl.sectigo.com,crl.thawte.com,crl.usertrust.com,crl.verisign.com,crl3.digicert.com,crl4.digicert.com,crls.ssl.com,github.com,host.docker.internal,json-schema.org,json.schemastore.org,keyserver.ubuntu.com,ocsp.digicert.com,ocsp.geotrust.com,ocsp.globalsign.com,ocsp.identrust.com,ocsp.sectigo.com,ocsp.ssl.com,ocsp.thawte.com,ocsp.usertrust.com,ocsp.verisign.com,packagecloud.io,packages.cloud.google.com,packages.microsoft.com,ppa.launchpad.net,raw.githubusercontent.com,registry.npmjs.org,s.symcb.com,s.symcd.com,security.ubuntu.com,ts-crl.ws.symantec.com,ts-ocsp.ws.symantec.com"
+          GH_AW_ALLOWED_DOMAINS: "api.business.githubcopilot.com,api.enterprise.githubcopilot.com,api.github.com,api.githubcopilot.com,api.individual.githubcopilot.com,github.com,host.docker.internal,raw.githubusercontent.com,registry.npmjs.org"
           GITHUB_SERVER_URL: ${{ github.server_url }}
           GITHUB_API_URL: ${{ github.api_url }}
-          GH_AW_COMMAND: grumpy
         with:
           script: |
             const { setupGlobals } = require('/opt/gh-aw/actions/setup_globals.cjs');
@@ -814,12 +720,6 @@ jobs:
           # AWF runs with sudo, creating files owned by root
           sudo chmod -R a+r /tmp/gh-aw/sandbox/firewall/logs 2>/dev/null || true
           awf logs summary | tee -a "$GITHUB_STEP_SUMMARY"
-      - name: Upload cache-memory data as artifact
-        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
-        if: always()
-        with:
-          name: cache-memory
-          path: /tmp/gh-aw/cache-memory
       - name: Upload agent artifacts
         if: always()
         continue-on-error: true
@@ -832,6 +732,7 @@ jobs:
             /tmp/gh-aw/mcp-logs/
             /tmp/gh-aw/sandbox/firewall/logs/
             /tmp/gh-aw/agent-stdio.log
+            /tmp/gh-aw/aw.patch
           if-no-files-found: ignore
 
   conclusion:
@@ -840,7 +741,6 @@ jobs:
       - agent
       - detection
       - safe_outputs
-      - update_cache_memory
     if: (always()) && (needs.agent.result != 'skipped')
     runs-on: ubuntu-slim
     permissions:
@@ -885,7 +785,7 @@ jobs:
         env:
           GH_AW_AGENT_OUTPUT: ${{ env.GH_AW_AGENT_OUTPUT }}
           GH_AW_NOOP_MAX: 1
-          GH_AW_WORKFLOW_NAME: "Compliance Checker - shared-standards"
+          GH_AW_WORKFLOW_NAME: "Sync shared-standards Files"
         with:
           github-token: ${{ secrets.GH_AW_GITHUB_TOKEN || secrets.GITHUB_TOKEN }}
           script: |
@@ -898,7 +798,7 @@ jobs:
         uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8.0.0
         env:
           GH_AW_AGENT_OUTPUT: ${{ env.GH_AW_AGENT_OUTPUT }}
-          GH_AW_WORKFLOW_NAME: "Compliance Checker - shared-standards"
+          GH_AW_WORKFLOW_NAME: "Sync shared-standards Files"
         with:
           github-token: ${{ secrets.GH_AW_GITHUB_TOKEN || secrets.GITHUB_TOKEN }}
           script: |
@@ -911,17 +811,30 @@ jobs:
         uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8.0.0
         env:
           GH_AW_AGENT_OUTPUT: ${{ env.GH_AW_AGENT_OUTPUT }}
-          GH_AW_WORKFLOW_NAME: "Compliance Checker - shared-standards"
+          GH_AW_WORKFLOW_NAME: "Sync shared-standards Files"
           GH_AW_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           GH_AW_AGENT_CONCLUSION: ${{ needs.agent.result }}
           GH_AW_SECRET_VERIFICATION_RESULT: ${{ needs.agent.outputs.secret_verification_result }}
-          GH_AW_SAFE_OUTPUT_MESSAGES: "{\"footer\":\"\\u003e 😤 *Reluctantly reviewed by [{workflow_name}]({run_url})*\",\"runStarted\":\"😤 *sigh* [{workflow_name}]({run_url}) is begrudgingly looking at this {event_type}... This better be worth my time.\",\"runSuccess\":\"😤 Fine. [{workflow_name}]({run_url}) finished the review. It wasn't completely terrible. I guess. 🙄\",\"runFailure\":\"😤 Great. [{workflow_name}]({run_url}) {status}. As if my day couldn't get any worse...\"}"
         with:
           github-token: ${{ secrets.GH_AW_GITHUB_TOKEN || secrets.GITHUB_TOKEN }}
           script: |
             const { setupGlobals } = require('/opt/gh-aw/actions/setup_globals.cjs');
             setupGlobals(core, github, context, exec, io);
             const { main } = require('/opt/gh-aw/actions/handle_agent_failure.cjs');
+            await main();
+      - name: Handle Create Pull Request Error
+        id: handle_create_pr_error
+        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8.0.0
+        env:
+          GH_AW_AGENT_OUTPUT: ${{ env.GH_AW_AGENT_OUTPUT }}
+          GH_AW_WORKFLOW_NAME: "Sync shared-standards Files"
+          GH_AW_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        with:
+          github-token: ${{ secrets.GH_AW_GITHUB_TOKEN || secrets.GITHUB_TOKEN }}
+          script: |
+            const { setupGlobals } = require('/opt/gh-aw/actions/setup_globals.cjs');
+            setupGlobals(core, github, context, exec, io);
+            const { main } = require('/opt/gh-aw/actions/handle_create_pr_error.cjs');
             await main();
       - name: Update reaction comment with completion status
         id: conclusion
@@ -931,10 +844,9 @@ jobs:
           GH_AW_COMMENT_ID: ${{ needs.activation.outputs.comment_id }}
           GH_AW_COMMENT_REPO: ${{ needs.activation.outputs.comment_repo }}
           GH_AW_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-          GH_AW_WORKFLOW_NAME: "Compliance Checker - shared-standards"
+          GH_AW_WORKFLOW_NAME: "Sync shared-standards Files"
           GH_AW_AGENT_CONCLUSION: ${{ needs.agent.result }}
           GH_AW_DETECTION_CONCLUSION: ${{ needs.detection.result }}
-          GH_AW_SAFE_OUTPUT_MESSAGES: "{\"footer\":\"\\u003e 😤 *Reluctantly reviewed by [{workflow_name}]({run_url})*\",\"runStarted\":\"😤 *sigh* [{workflow_name}]({run_url}) is begrudgingly looking at this {event_type}... This better be worth my time.\",\"runSuccess\":\"😤 Fine. [{workflow_name}]({run_url}) finished the review. It wasn't completely terrible. I guess. 🙄\",\"runFailure\":\"😤 Great. [{workflow_name}]({run_url}) {status}. As if my day couldn't get any worse...\"}"
         with:
           github-token: ${{ secrets.GH_AW_GITHUB_TOKEN || secrets.GITHUB_TOKEN }}
           script: |
@@ -948,6 +860,8 @@ jobs:
     if: needs.agent.outputs.output_types != '' || needs.agent.outputs.has_patch == 'true'
     runs-on: ubuntu-latest
     permissions: {}
+    concurrency:
+      group: "gh-aw-copilot-${{ github.workflow }}"
     timeout-minutes: 10
     outputs:
       success: ${{ steps.parse_results.outputs.success }}
@@ -976,8 +890,8 @@ jobs:
       - name: Setup threat detection
         uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8.0.0
         env:
-          WORKFLOW_NAME: "Compliance Checker - shared-standards"
-          WORKFLOW_DESCRIPTION: "Compliance checker that validates code against standards from nathlan/shared-standards repository"
+          WORKFLOW_NAME: "Sync shared-standards Files"
+          WORKFLOW_DESCRIPTION: "Sync Copilot files and GitHub Actions workflows from nathlan/shared-standards into this repository"
           HAS_PATCH: ${{ needs.agent.outputs.has_patch }}
         with:
           script: |
@@ -1042,77 +956,22 @@ jobs:
           path: /tmp/gh-aw/threat-detection/detection.log
           if-no-files-found: ignore
 
-  pre_activation:
-    if: >
-      (github.event_name == 'issue_comment') && ((contains(github.event.comment.body, '/grumpy')) && (github.event.issue.pull_request != null)) ||
-      (github.event_name == 'pull_request_review_comment') && (contains(github.event.comment.body, '/grumpy'))
-    runs-on: ubuntu-slim
-    permissions:
-      discussions: write
-      issues: write
-      pull-requests: write
-    outputs:
-      activated: ${{ (steps.check_membership.outputs.is_team_member == 'true') && (steps.check_command_position.outputs.command_position_ok == 'true') }}
-      matched_command: ${{ steps.check_command_position.outputs.matched_command }}
-    steps:
-      - name: Setup Scripts
-        uses: github/gh-aw/actions/setup@76d37d925abd44fee97379206f105b74b91a285b # v0.40.0
-        with:
-          destination: /opt/gh-aw/actions
-      - name: Add eyes reaction for immediate feedback
-        id: react
-        if: github.event_name == 'issues' || github.event_name == 'issue_comment' || github.event_name == 'pull_request_review_comment' || github.event_name == 'discussion' || github.event_name == 'discussion_comment' || (github.event_name == 'pull_request') && (github.event.pull_request.head.repo.id == github.repository_id)
-        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8.0.0
-        env:
-          GH_AW_REACTION: "eyes"
-        with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          script: |
-            const { setupGlobals } = require('/opt/gh-aw/actions/setup_globals.cjs');
-            setupGlobals(core, github, context, exec, io);
-            const { main } = require('/opt/gh-aw/actions/add_reaction.cjs');
-            await main();
-      - name: Check team membership for command workflow
-        id: check_membership
-        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8.0.0
-        env:
-          GH_AW_REQUIRED_ROLES: admin,maintainer,write
-        with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          script: |
-            const { setupGlobals } = require('/opt/gh-aw/actions/setup_globals.cjs');
-            setupGlobals(core, github, context, exec, io);
-            const { main } = require('/opt/gh-aw/actions/check_membership.cjs');
-            await main();
-      - name: Check command position
-        id: check_command_position
-        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8.0.0
-        env:
-          GH_AW_COMMANDS: "[\"grumpy\"]"
-        with:
-          script: |
-            const { setupGlobals } = require('/opt/gh-aw/actions/setup_globals.cjs');
-            setupGlobals(core, github, context, exec, io);
-            const { main } = require('/opt/gh-aw/actions/check_command_position.cjs');
-            await main();
-
   safe_outputs:
     needs:
+      - activation
       - agent
       - detection
     if: ((!cancelled()) && (needs.agent.result != 'skipped')) && (needs.detection.outputs.success == 'true')
     runs-on: ubuntu-slim
     permissions:
-      contents: read
-      discussions: write
+      contents: write
       issues: write
       pull-requests: write
     timeout-minutes: 15
     env:
       GH_AW_ENGINE_ID: "copilot"
-      GH_AW_SAFE_OUTPUT_MESSAGES: "{\"footer\":\"\\u003e 😤 *Reluctantly reviewed by [{workflow_name}]({run_url})*\",\"runStarted\":\"😤 *sigh* [{workflow_name}]({run_url}) is begrudgingly looking at this {event_type}... This better be worth my time.\",\"runSuccess\":\"😤 Fine. [{workflow_name}]({run_url}) finished the review. It wasn't completely terrible. I guess. 🙄\",\"runFailure\":\"😤 Great. [{workflow_name}]({run_url}) {status}. As if my day couldn't get any worse...\"}"
-      GH_AW_WORKFLOW_ID: "grumpy-compliance-officer"
-      GH_AW_WORKFLOW_NAME: "Compliance Checker - shared-standards"
+      GH_AW_WORKFLOW_ID: "sync-shared-standards"
+      GH_AW_WORKFLOW_NAME: "Sync shared-standards Files"
     outputs:
       process_safe_outputs_processed_count: ${{ steps.process_safe_outputs.outputs.processed_count }}
       process_safe_outputs_temporary_id_map: ${{ steps.process_safe_outputs.outputs.temporary_id_map }}
@@ -1132,12 +991,38 @@ jobs:
           mkdir -p /tmp/gh-aw/safeoutputs/
           find "/tmp/gh-aw/safeoutputs/" -type f -print
           echo "GH_AW_AGENT_OUTPUT=/tmp/gh-aw/safeoutputs/agent_output.json" >> "$GITHUB_ENV"
+      - name: Download patch artifact
+        continue-on-error: true
+        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6.0.0
+        with:
+          name: agent-artifacts
+          path: /tmp/gh-aw/
+      - name: Checkout repository
+        if: ((!cancelled()) && (needs.agent.result != 'skipped')) && (contains(needs.agent.outputs.output_types, 'create_pull_request'))
+        uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6
+        with:
+          token: ${{ github.token }}
+          persist-credentials: false
+          fetch-depth: 1
+      - name: Configure Git credentials
+        if: ((!cancelled()) && (needs.agent.result != 'skipped')) && (contains(needs.agent.outputs.output_types, 'create_pull_request'))
+        env:
+          REPO_NAME: ${{ github.repository }}
+          SERVER_URL: ${{ github.server_url }}
+          GIT_TOKEN: ${{ github.token }}
+        run: |
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git config --global user.name "github-actions[bot]"
+          # Re-authenticate git with GitHub token
+          SERVER_URL_STRIPPED="${SERVER_URL#https://}"
+          git remote set-url origin "https://x-access-token:${GIT_TOKEN}@${SERVER_URL_STRIPPED}/${REPO_NAME}.git"
+          echo "Git configured with standard GitHub Actions identity"
       - name: Process Safe Outputs
         id: process_safe_outputs
         uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8.0.0
         env:
           GH_AW_AGENT_OUTPUT: ${{ env.GH_AW_AGENT_OUTPUT }}
-          GH_AW_SAFE_OUTPUTS_HANDLER_CONFIG: "{\"add_comment\":{\"max\":1},\"create_pull_request_review_comment\":{\"max\":5,\"side\":\"RIGHT\"},\"missing_data\":{},\"missing_tool\":{}}"
+          GH_AW_SAFE_OUTPUTS_HANDLER_CONFIG: "{\"create_pull_request\":{\"base_branch\":\"${{ github.ref_name }}\",\"draft\":false,\"labels\":[\"standards\",\"automation\"],\"max\":1,\"max_patch_size\":1024,\"title_prefix\":\"[shared-standards-sync] \"},\"missing_data\":{},\"missing_tool\":{}}"
         with:
           github-token: ${{ secrets.GH_AW_GITHUB_TOKEN || secrets.GITHUB_TOKEN }}
           script: |
@@ -1145,28 +1030,4 @@ jobs:
             setupGlobals(core, github, context, exec, io);
             const { main } = require('/opt/gh-aw/actions/safe_output_handler_manager.cjs');
             await main();
-
-  update_cache_memory:
-    needs:
-      - agent
-      - detection
-    if: always() && needs.detection.outputs.success == 'true'
-    runs-on: ubuntu-latest
-    permissions: {}
-    steps:
-      - name: Setup Scripts
-        uses: github/gh-aw/actions/setup@76d37d925abd44fee97379206f105b74b91a285b # v0.40.0
-        with:
-          destination: /opt/gh-aw/actions
-      - name: Download cache-memory artifact (default)
-        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6.0.0
-        continue-on-error: true
-        with:
-          name: cache-memory
-          path: /tmp/gh-aw/cache-memory
-      - name: Save cache-memory to cache (default)
-        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
-        with:
-          key: memory-${{ github.workflow }}-${{ github.run_id }}
-          path: /tmp/gh-aw/cache-memory
 
