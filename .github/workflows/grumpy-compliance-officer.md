@@ -89,10 +89,12 @@ Use the GitHub tools to get the pull request details:
 
 #### 3B: Analyze Code Against shared-standards Rules
 
-Compare the PR code changes against the specific compliance rules from `nathlan/shared-standards/.github/instructions/standards.instructions.md`. 
+Compare the PR code changes against the compliance rules from `nathlan/shared-standards/.github/instructions/standards.instructions.md`. 
 
-Check for violations of:
-- **shared-standards compliance rules** - All rules defined in standards.instructions.md
+**Only check for what is explicitly defined in the standards.instructions.md file.**
+
+Do not add or assume additional compliance checks beyond what is documented in shared-standards. Your job is to enforce the standards as written, not to create new ones.
+
 **For every issue found: Reference the specific rule/section from shared-standards that was violated.**
 
 ### Step 4: Report Compliance Results as PR Comments
