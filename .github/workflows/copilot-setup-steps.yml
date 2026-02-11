@@ -18,6 +18,21 @@ jobs:
       contents: read
 
     steps:
+      
+      - name: Generate token for shared-standards
+        id: shared-standards-token
+        uses: actions/create-github-app-token@v2
+        with:
+          app-id: ${{ vars.SOURCE_REPO_SYNC_APP_ID }}
+          private-key: ${{ secrets.SOURCE_REPO_SYNC_APP_PRIVATE_KEY }}
+          owner: nathlan
+          repositories: shared-standards
+      # The token needs to be saved as a GH environment secret instead!
+      - name: Export GH_TOKEN
+        env:
+          GH_TOKEN: ${{ steps.shared-standards-token.outputs.token }}
+        run: echo "GH_TOKEN=$GH_TOKEN" >> $GITHUB_ENV
+
       - name: Install gh-aw extension
         run: |
           curl -fsSL https://raw.githubusercontent.com/github/gh-aw/refs/heads/main/install-gh-aw.sh | bash
