@@ -41,7 +41,7 @@ jobs:
         with:
           repository: nathlan/shared-standards
           token: ${{ steps.shared-standards-token.outputs.token }}
-          path: shared-standards
+          path: .github/instructions
       
       - name: Install gh-aw extension
         run: |
