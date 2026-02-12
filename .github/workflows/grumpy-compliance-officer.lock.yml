@@ -21,7 +21,7 @@
 #
 # Compliance checker that validates code against standards from nathlan/shared-standards repository
 #
-# frontmatter-hash: b9a1f64373f1faba9d328d423a0fa2a1e828df2ae96e6ce548c16300da6e2c8d
+# frontmatter-hash: 357981da96b01777aa37f33282355a226201d584363b96e56c6d5a082e4012bc
 
 name: "Compliance Checker - shared-standards"
 "on":
