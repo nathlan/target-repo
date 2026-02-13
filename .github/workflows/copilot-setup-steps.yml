@@ -28,7 +28,7 @@ jobs:
         uses: actions/checkout@v4
       
       - name: Generate token for shared-standards and source-repo
-        id: shared-standards-token
+        id: app-token
         uses: actions/create-github-app-token@v2
         with:
           app-id: ${{ vars.SOURCE_REPO_SYNC_APP_ID }}
@@ -40,11 +40,11 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: nathlan/shared-standards
-          token: ${{ steps.shared-standards-token.outputs.token }}
+          token: ${{ steps.app-token.outputs.token }}
           path: .github/instructions
       
-      - name: Export GH_TOKEN for source-repo access
-        run: echo "GH_TOKEN=${{ steps.shared-standards-token.outputs.token }}" >> $GITHUB_ENV
+      - name: Export GH_TOKEN for cross-repo access
+        run: echo "GH_TOKEN=${{ steps.app-token.outputs.token }}" >> $GITHUB_ENV
       
       - name: Install gh-aw extension
         run: |
