@@ -27,14 +27,14 @@ jobs:
       - name: Checkout current repository
         uses: actions/checkout@v4
       
-      - name: Generate token for shared-standards
+      - name: Generate token for shared-standards and source-repo
         id: shared-standards-token
         uses: actions/create-github-app-token@v2
         with:
           app-id: ${{ vars.SOURCE_REPO_SYNC_APP_ID }}
           private-key: ${{ secrets.SOURCE_REPO_SYNC_APP_PRIVATE_KEY }}
           owner: nathlan
-          repositories: shared-standards
+          repositories: shared-standards,source-repo
       
       - name: Checkout shared-standards repository
         uses: actions/checkout@v4
@@ -42,6 +42,9 @@ jobs:
           repository: nathlan/shared-standards
           token: ${{ steps.shared-standards-token.outputs.token }}
           path: .github/instructions
+      
+      - name: Export GH_TOKEN for source-repo access
+        run: echo "GH_TOKEN=${{ steps.shared-standards-token.outputs.token }}" >> $GITHUB_ENV
       
       - name: Install gh-aw extension
         run: |
